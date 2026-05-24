@@ -3,6 +3,7 @@ screenshots/
 scripts/current.pine
 temp_*
 *.log
+*.err
 discovery-log.json
 
 # Secrets — never commit

@@ -1,0 +1,249 @@
+//@version=6
+indicator("HTF Zone FVG Backtest Highlighter", overlay=true, max_boxes_count=100, max_labels_count=500, max_lines_count=500)
+
+leftBars = input.int(3, "Zone pivot left bars", minval=1)
+rightBars = input.int(3, "Zone pivot right bars", minval=1)
+atrLength = input.int(14, "ATR length", minval=1)
+zoneAtrWidth = input.float(0.35, "Zone thickness in ATR", minval=0.05, step=0.05)
+impulseAtr = input.float(1.20, "Strong move away in ATR", minval=0.10, step=0.10)
+wickRatio = input.float(0.45, "Minimum rejection wick ratio", minval=0.05, maxval=0.95, step=0.05)
+structureLookback = input.int(3, "Structure shift pivot lookback", minval=1)
+setupValidBars = input.int(32, "Bars allowed after HTF rejection", minval=1)
+fvgRetestBars = input.int(24, "Bars allowed after 15m FVG", minval=1)
+
+entryRange = input.float(5.0, "Entry range", minval=0.0, step=0.25)
+stopDistance = input.float(15.0, "Stop distance", minval=0.25, step=0.25)
+tp1Distance = input.float(30.0, "TP1 distance", minval=0.25, step=0.25)
+tp2Distance = input.float(50.0, "TP2 distance", minval=0.25, step=0.25)
+
+showZones = input.bool(true, "Show HTF zones")
+showFVG = input.bool(true, "Show active 15m FVG")
+showEntryRange = input.bool(true, "Show entry range")
+showEntrySignals = input.bool(true, "Show entry signals")
+showPassFail = input.bool(true, "Show pass/fail results")
+
+type Zone
+    float top
+    float bottom
+    bool valid
+
+zoneFromTf() =>
+    atr = ta.atr(atrLength)
+    ph = ta.pivothigh(high, leftBars, rightBars)
+    pl = ta.pivotlow(low, leftBars, rightBars)
+    supplyImpulse = not na(ph) and (ph - close) > atr * impulseAtr
+    demandImpulse = not na(pl) and (close - pl) > atr * impulseAtr
+    supplyTop = ph + atr * zoneAtrWidth
+    supplyBottom = ph - atr * zoneAtrWidth
+    demandTop = pl + atr * zoneAtrWidth
+    demandBottom = pl - atr * zoneAtrWidth
+    [supplyImpulse ? supplyTop : na, supplyImpulse ? supplyBottom : na, demandImpulse ? demandTop : na, demandImpulse ? demandBottom : na]
+
+[s30Top, s30Bot, d30Top, d30Bot] = request.security(syminfo.tickerid, "30", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+[s60Top, s60Bot, d60Top, d60Bot] = request.security(syminfo.tickerid, "60", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+[s240Top, s240Bot, d240Top, d240Bot] = request.security(syminfo.tickerid, "240", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+
+var Zone supply30 = Zone.new(na, na, false)
+var Zone demand30 = Zone.new(na, na, false)
+var Zone supply60 = Zone.new(na, na, false)
+var Zone demand60 = Zone.new(na, na, false)
+var Zone supply240 = Zone.new(na, na, false)
+var Zone demand240 = Zone.new(na, na, false)
+
+if not na(s30Top)
+    supply30 := Zone.new(s30Top, s30Bot, true)
+if not na(d30Top)
+    demand30 := Zone.new(d30Top, d30Bot, true)
+if not na(s60Top)
+    supply60 := Zone.new(s60Top, s60Bot, true)
+if not na(d60Top)
+    demand60 := Zone.new(d60Top, d60Bot, true)
+if not na(s240Top)
+    supply240 := Zone.new(s240Top, s240Bot, true)
+if not na(d240Top)
+    demand240 := Zone.new(d240Top, d240Bot, true)
+
+inZone(Zone z) =>
+    z.valid and high >= z.bottom and low <= z.top
+
+activeSupply = inZone(supply240) ? supply240 : inZone(supply60) ? supply60 : inZone(supply30) ? supply30 : Zone.new(na, na, false)
+activeDemand = inZone(demand240) ? demand240 : inZone(demand60) ? demand60 : inZone(demand30) ? demand30 : Zone.new(na, na, false)
+
+barRange = math.max(high - low, syminfo.mintick)
+upperWick = high - math.max(open, close)
+lowerWick = math.min(open, close) - low
+supplyRejection = activeSupply.valid and high >= activeSupply.bottom and close < activeSupply.bottom and upperWick / barRange >= wickRatio
+demandRejection = activeDemand.valid and low <= activeDemand.top and close > activeDemand.top and lowerWick / barRange >= wickRatio
+
+var int setupDir = 0
+var int setupBar = na
+var bool structureShift = false
+var int structureShiftBar = na
+var float bullFvgTop = na
+var float bullFvgBottom = na
+var int bullFvgBar = na
+var float bearFvgTop = na
+var float bearFvgBottom = na
+var int bearFvgBar = na
+
+if supplyRejection
+    setupDir := -1
+    setupBar := bar_index
+    structureShift := false
+    structureShiftBar := na
+    bullFvgTop := na
+    bullFvgBottom := na
+    bullFvgBar := na
+    bearFvgTop := na
+    bearFvgBottom := na
+    bearFvgBar := na
+
+if demandRejection
+    setupDir := 1
+    setupBar := bar_index
+    structureShift := false
+    structureShiftBar := na
+    bullFvgTop := na
+    bullFvgBottom := na
+    bullFvgBar := na
+    bearFvgTop := na
+    bearFvgBottom := na
+    bearFvgBar := na
+
+setupStillValid = not na(setupBar) and bar_index - setupBar <= setupValidBars
+if not setupStillValid
+    setupDir := 0
+    structureShift := false
+
+swingHigh = ta.pivothigh(high, structureLookback, structureLookback)
+swingLow = ta.pivotlow(low, structureLookback, structureLookback)
+lastSwingHigh = ta.valuewhen(not na(swingHigh), swingHigh, 0)
+lastSwingLow = ta.valuewhen(not na(swingLow), swingLow, 0)
+
+if setupDir == 1 and setupStillValid and not structureShift and not na(lastSwingHigh) and close > lastSwingHigh
+    structureShift := true
+    structureShiftBar := bar_index
+
+if setupDir == -1 and setupStillValid and not structureShift and not na(lastSwingLow) and close < lastSwingLow
+    structureShift := true
+    structureShiftBar := bar_index
+
+fvg15() =>
+    bull = low > high[2]
+    bear = high < low[2]
+    bullTop = low
+    bullBottom = high[2]
+    bearTop = low[2]
+    bearBottom = high
+    [bull ? bullTop : na, bull ? bullBottom : na, bear ? bearTop : na, bear ? bearBottom : na]
+
+[bullFvgTopRaw, bullFvgBotRaw, bearFvgTopRaw, bearFvgBotRaw] = request.security(syminfo.tickerid, "15", fvg15(), barmerge.gaps_off, barmerge.lookahead_off)
+
+if setupDir == 1 and setupStillValid and structureShift and bar_index >= structureShiftBar and not na(bullFvgTopRaw)
+    bullFvgTop := bullFvgTopRaw
+    bullFvgBottom := bullFvgBotRaw
+    bullFvgBar := bar_index
+
+if setupDir == -1 and setupStillValid and structureShift and bar_index >= structureShiftBar and not na(bearFvgTopRaw)
+    bearFvgTop := bearFvgTopRaw
+    bearFvgBottom := bearFvgBotRaw
+    bearFvgBar := bar_index
+
+bullFvgValid = not na(bullFvgBar) and bar_index - bullFvgBar <= fvgRetestBars
+bearFvgValid = not na(bearFvgBar) and bar_index - bearFvgBar <= fvgRetestBars
+bullFvgRetest = bullFvgValid and low <= bullFvgTop and close > bullFvgBottom
+bearFvgRetest = bearFvgValid and high >= bearFvgBottom and close < bearFvgTop
+
+longSignal = setupDir == 1 and setupStillValid and structureShift and bullFvgRetest
+shortSignal = setupDir == -1 and setupStillValid and structureShift and bearFvgRetest
+
+var bool tradeActive = false
+var int tradeDir = 0
+var int tradeEntryBar = na
+var float tradeEntry = na
+var float tradeRangeEnd = na
+var float tradeStop = na
+var float tradeTp1 = na
+var float tradeTp2 = na
+
+if not tradeActive and longSignal
+    tradeActive := true
+    tradeDir := 1
+    tradeEntryBar := bar_index
+    tradeEntry := close
+    tradeRangeEnd := close + entryRange
+    tradeStop := close - stopDistance
+    tradeTp1 := close + tp1Distance
+    tradeTp2 := close + tp2Distance
+    setupDir := 0
+    if showEntrySignals
+        label.new(bar_index, low, "BUY", style=label.style_label_up, color=color.new(color.blue, 0), textcolor=color.white)
+    if showEntryRange
+        box.new(bar_index, tradeRangeEnd, bar_index + 8, tradeEntry, bgcolor=color.new(color.blue, 88), border_color=color.new(color.blue, 35))
+
+if not tradeActive and shortSignal
+    tradeActive := true
+    tradeDir := -1
+    tradeEntryBar := bar_index
+    tradeEntry := close
+    tradeRangeEnd := close - entryRange
+    tradeStop := close + stopDistance
+    tradeTp1 := close - tp1Distance
+    tradeTp2 := close - tp2Distance
+    setupDir := 0
+    if showEntrySignals
+        label.new(bar_index, high, "SELL", style=label.style_label_down, color=color.new(color.blue, 0), textcolor=color.white)
+    if showEntryRange
+        box.new(bar_index, tradeEntry, bar_index + 8, tradeRangeEnd, bgcolor=color.new(color.blue, 88), border_color=color.new(color.blue, 35))
+
+longFailed = tradeActive and tradeDir == 1 and bar_index > tradeEntryBar and low <= tradeStop
+longPassed = tradeActive and tradeDir == 1 and bar_index > tradeEntryBar and not longFailed and high >= tradeTp1
+shortFailed = tradeActive and tradeDir == -1 and bar_index > tradeEntryBar and high >= tradeStop
+shortPassed = tradeActive and tradeDir == -1 and bar_index > tradeEntryBar and not shortFailed and low <= tradeTp1
+
+if longPassed or shortPassed
+    if showPassFail
+        label.new(bar_index, tradeDir == 1 ? high : low, "PASS\nTP1", style=tradeDir == 1 ? label.style_label_down : label.style_label_up, color=color.new(color.lime, 0), textcolor=color.black)
+        line.new(tradeEntryBar, tradeEntry, bar_index, tradeTp1, color=color.new(color.lime, 0), width=2)
+    tradeActive := false
+    tradeDir := 0
+
+if longFailed or shortFailed
+    if showPassFail
+        label.new(bar_index, tradeDir == 1 ? low : high, "FAIL\nSTOP", style=tradeDir == 1 ? label.style_label_up : label.style_label_down, color=color.new(color.red, 0), textcolor=color.white)
+        line.new(tradeEntryBar, tradeEntry, bar_index, tradeStop, color=color.new(color.red, 0), width=2)
+    tradeActive := false
+    tradeDir := 0
+
+plot(tradeActive ? tradeStop : na, "Active Stop", color=color.red, style=plot.style_linebr)
+plot(tradeActive ? tradeTp1 : na, "Active TP1", color=color.lime, style=plot.style_linebr)
+plot(tradeActive ? tradeTp2 : na, "Active TP2", color=color.new(color.lime, 40), style=plot.style_linebr)
+
+var box bSupply30 = na
+var box bSupply60 = na
+var box bSupply240 = na
+var box bDemand30 = na
+var box bDemand60 = na
+var box bDemand240 = na
+var box bBullFvg = na
+var box bBearFvg = na
+
+drawZone(box existing, Zone z, color c) =>
+    if not na(existing)
+        box.delete(existing)
+    showZones and z.valid ? box.new(bar_index - 200, z.top, bar_index + 50, z.bottom, bgcolor=color.new(c, 90), border_color=color.new(c, 45)) : na
+
+drawFvg(box existing, bool valid, float top, float bottom, color c) =>
+    if not na(existing)
+        box.delete(existing)
+    showFVG and valid ? box.new(bar_index - 40, top, bar_index + 20, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
+
+if barstate.islast
+    bSupply30 := drawZone(bSupply30, supply30, color.red)
+    bSupply60 := drawZone(bSupply60, supply60, color.red)
+    bSupply240 := drawZone(bSupply240, supply240, color.red)
+    bDemand30 := drawZone(bDemand30, demand30, color.lime)
+    bDemand60 := drawZone(bDemand60, demand60, color.lime)
+    bDemand240 := drawZone(bDemand240, demand240, color.lime)
+    bBullFvg := drawFvg(bBullFvg, bullFvgValid, bullFvgTop, bullFvgBottom, color.aqua)
+    bBearFvg := drawFvg(bBearFvg, bearFvgValid, bearFvgTop, bearFvgBottom, color.orange)
