@@ -4,7 +4,7 @@ import http from "node:http";
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "";
-const port = Number(process.env.TELEGRAM_WEBHOOK_PORT || 8787);
+const port = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const slPips = Number(process.env.TELEGRAM_SL_PIPS || 40);
 const tp1Pips = Number(process.env.TELEGRAM_TP1_PIPS || 60);
 const tp2Pips = Number(process.env.TELEGRAM_TP2_PIPS || 100);
