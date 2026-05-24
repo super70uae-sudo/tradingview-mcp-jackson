@@ -12,7 +12,8 @@
     "./core": "./src/core/index.js"
   },
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node scripts/telegram_webhook.js",
+    "mcp": "node src/server.js",
     "tv": "node src/cli/index.js",
     "telegram": "node scripts/telegram_webhook.js",
     "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",

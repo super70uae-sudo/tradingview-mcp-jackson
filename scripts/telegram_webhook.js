@@ -4,6 +4,7 @@ import http from "node:http";
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const slPips = Number(process.env.TELEGRAM_SL_PIPS || 40);
 const tp1Pips = Number(process.env.TELEGRAM_TP1_PIPS || 60);
@@ -159,11 +160,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.on("error", (error) => {
-  console.error(`Webhook server failed to listen on port ${port}: ${error.message}`);
+  console.error(`Webhook server failed to listen on ${host}:${port}: ${error.message}`);
   process.exit(1);
 });
 
-server.listen(port, () => {
-  console.log(`Telegram webhook listening on http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`Telegram webhook listening on http://${host}:${port}`);
   console.log(`TradingView path: /tradingview?secret=${secret || "no-secret-set"}`);
 });
