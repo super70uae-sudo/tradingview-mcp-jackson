@@ -158,6 +158,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (error) => {
+  console.error(`Webhook server failed to listen on port ${port}: ${error.message}`);
+  process.exit(1);
+});
+
 server.listen(port, () => {
   console.log(`Telegram webhook listening on http://localhost:${port}`);
   console.log(`TradingView path: /tradingview?secret=${secret || "no-secret-set"}`);
