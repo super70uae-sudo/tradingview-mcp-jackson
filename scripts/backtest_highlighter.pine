@@ -1,5 +1,5 @@
 //@version=6
-indicator("HTF Zone FVG Backtest Highlighter", overlay=true, max_boxes_count=100, max_labels_count=500, max_lines_count=500)
+indicator("HTF Zone FVG Backtest Highlighter", overlay=true, scale=scale.none, max_boxes_count=100, max_labels_count=500, max_lines_count=500)
 
 leftBars = input.int(3, "Zone pivot left bars", minval=1)
 rightBars = input.int(3, "Zone pivot right bars", minval=1)
