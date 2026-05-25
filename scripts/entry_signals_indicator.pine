@@ -7,9 +7,12 @@ atrLength = input.int(14, "ATR length", minval=1)
 zoneAtrWidth = input.float(0.35, "Zone thickness in ATR", minval=0.05, step=0.05)
 impulseAtr = input.float(1.20, "Strong move away in ATR", minval=0.10, step=0.10)
 wickRatio = input.float(0.45, "Minimum rejection wick ratio", minval=0.05, maxval=0.95, step=0.05)
-structureLookback = input.int(3, "Structure shift pivot lookback", minval=1)
 setupValidBars = input.int(32, "Bars allowed after HTF rejection", minval=1)
 fvgRetestBars = input.int(24, "Bars allowed after 15m FVG", minval=1)
+rsiLength = input.int(14, "RSI length", minval=1)
+rsiOversold = input.float(30.0, "RSI oversold for buys", minval=1, maxval=50)
+rsiOverbought = input.float(70.0, "RSI overbought for sells", minval=50, maxval=99)
+rsiRecentBars = input.int(8, "RSI extreme valid for bars", minval=1)
 showZones = input.bool(true, "Show HTF zones")
 showFVG = input.bool(true, "Show active 15m FVG")
 maxVisibleDistancePct = input.float(8.0, "Hide drawings farther than % from price", minval=0.5, step=0.5)
@@ -69,8 +72,6 @@ demandRejection = activeDemand.valid and low <= activeDemand.top and close > act
 
 var int setupDir = 0
 var int setupBar = na
-var bool structureShift = false
-var int structureShiftBar = na
 var float bullFvgTop = na
 var float bullFvgBottom = na
 var int bullFvgBar = na
@@ -81,8 +82,6 @@ var int bearFvgBar = na
 if supplyRejection
     setupDir := -1
     setupBar := bar_index
-    structureShift := false
-    structureShiftBar := na
     bullFvgTop := na
     bullFvgBottom := na
     bullFvgBar := na
@@ -93,8 +92,6 @@ if supplyRejection
 if demandRejection
     setupDir := 1
     setupBar := bar_index
-    structureShift := false
-    structureShiftBar := na
     bullFvgTop := na
     bullFvgBottom := na
     bullFvgBar := na
@@ -105,20 +102,6 @@ if demandRejection
 setupStillValid = not na(setupBar) and bar_index - setupBar <= setupValidBars
 if not setupStillValid
     setupDir := 0
-    structureShift := false
-
-swingHigh = ta.pivothigh(high, structureLookback, structureLookback)
-swingLow = ta.pivotlow(low, structureLookback, structureLookback)
-lastSwingHigh = ta.valuewhen(not na(swingHigh), swingHigh, 0)
-lastSwingLow = ta.valuewhen(not na(swingLow), swingLow, 0)
-
-if setupDir == 1 and setupStillValid and not structureShift and not na(lastSwingHigh) and close > lastSwingHigh
-    structureShift := true
-    structureShiftBar := bar_index
-
-if setupDir == -1 and setupStillValid and not structureShift and not na(lastSwingLow) and close < lastSwingLow
-    structureShift := true
-    structureShiftBar := bar_index
 
 fvg15() =>
     bull = low > high[2]
@@ -131,12 +114,18 @@ fvg15() =>
 
 [bullFvgTopRaw, bullFvgBotRaw, bearFvgTopRaw, bearFvgBotRaw] = request.security(syminfo.tickerid, "15", fvg15(), barmerge.gaps_off, barmerge.lookahead_off)
 
-if setupDir == 1 and setupStillValid and structureShift and bar_index >= structureShiftBar and not na(bullFvgTopRaw)
+rsi = ta.rsi(close, rsiLength)
+barsSinceOversold = ta.barssince(rsi <= rsiOversold)
+barsSinceOverbought = ta.barssince(rsi >= rsiOverbought)
+buyRsiOk = not na(barsSinceOversold) and barsSinceOversold <= rsiRecentBars
+sellRsiOk = not na(barsSinceOverbought) and barsSinceOverbought <= rsiRecentBars
+
+if setupDir == 1 and setupStillValid and buyRsiOk and not na(bullFvgTopRaw)
     bullFvgTop := bullFvgTopRaw
     bullFvgBottom := bullFvgBotRaw
     bullFvgBar := bar_index
 
-if setupDir == -1 and setupStillValid and structureShift and bar_index >= structureShiftBar and not na(bearFvgTopRaw)
+if setupDir == -1 and setupStillValid and sellRsiOk and not na(bearFvgTopRaw)
     bearFvgTop := bearFvgTopRaw
     bearFvgBottom := bearFvgBotRaw
     bearFvgBar := bar_index
@@ -146,16 +135,16 @@ bearFvgValid = not na(bearFvgBar) and bar_index - bearFvgBar <= fvgRetestBars
 bullFvgRetest = bullFvgValid and low <= bullFvgTop and close > bullFvgBottom
 bearFvgRetest = bearFvgValid and high >= bearFvgBottom and close < bearFvgTop
 
-longSignal = setupDir == 1 and setupStillValid and structureShift and bullFvgRetest
-shortSignal = setupDir == -1 and setupStillValid and structureShift and bearFvgRetest
+longSignal = setupDir == 1 and setupStillValid and buyRsiOk and bullFvgRetest
+shortSignal = setupDir == -1 and setupStillValid and sellRsiOk and bearFvgRetest
 
 if longSignal
-    msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand respected, bullish structure shift, 15m bullish FVG retest"}'
+    msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, RSI oversold recently, 15m bullish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
     setupDir := 0
 
 if shortSignal
-    msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply respected, bearish structure shift, 15m bearish FVG retest"}'
+    msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, RSI overbought recently, 15m bearish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
     setupDir := 0
 
