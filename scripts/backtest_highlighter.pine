@@ -21,6 +21,7 @@ showFVG = input.bool(true, "Show active 15m FVG")
 showEntryRange = input.bool(true, "Show entry range")
 showEntrySignals = input.bool(true, "Show entry signals")
 showPassFail = input.bool(true, "Show pass/fail results")
+maxVisibleDistancePct = input.float(8.0, "Hide drawings farther than % from price", minval=0.5, step=0.5)
 
 type Zone
     float top
@@ -215,9 +216,12 @@ if longFailed or shortFailed
     tradeActive := false
     tradeDir := 0
 
-plot(tradeActive ? tradeStop : na, "Active Stop", color=color.red, style=plot.style_linebr)
-plot(tradeActive ? tradeTp1 : na, "Active TP1", color=color.lime, style=plot.style_linebr)
-plot(tradeActive ? tradeTp2 : na, "Active TP2", color=color.new(color.lime, 40), style=plot.style_linebr)
+nearTradeLevel(float level) =>
+    not na(level) and math.abs(level - close) / close * 100 <= maxVisibleDistancePct
+
+plot(tradeActive and nearTradeLevel(tradeStop) ? tradeStop : na, "Active Stop", color=color.red, style=plot.style_linebr, display=display.none)
+plot(tradeActive and nearTradeLevel(tradeTp1) ? tradeTp1 : na, "Active TP1", color=color.lime, style=plot.style_linebr, display=display.none)
+plot(tradeActive and nearTradeLevel(tradeTp2) ? tradeTp2 : na, "Active TP2", color=color.new(color.lime, 40), style=plot.style_linebr, display=display.none)
 
 var box bSupply30 = na
 var box bSupply60 = na
@@ -231,12 +235,16 @@ var box bBearFvg = na
 drawZone(box existing, Zone z, color c) =>
     if not na(existing)
         box.delete(existing)
-    showZones and z.valid ? box.new(bar_index - 200, z.top, bar_index + 50, z.bottom, bgcolor=color.new(c, 90), border_color=color.new(c, 45)) : na
+    mid = (z.top + z.bottom) / 2.0
+    nearPrice = z.valid and math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
+    showZones and nearPrice ? box.new(bar_index - 200, z.top, bar_index + 50, z.bottom, bgcolor=color.new(c, 90), border_color=color.new(c, 45)) : na
 
 drawFvg(box existing, bool valid, float top, float bottom, color c) =>
     if not na(existing)
         box.delete(existing)
-    showFVG and valid ? box.new(bar_index - 40, top, bar_index + 20, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
+    mid = (top + bottom) / 2.0
+    nearPrice = valid and math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
+    showFVG and nearPrice ? box.new(bar_index - 40, top, bar_index + 20, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
 
 if barstate.islast
     bSupply30 := drawZone(bSupply30, supply30, color.red)

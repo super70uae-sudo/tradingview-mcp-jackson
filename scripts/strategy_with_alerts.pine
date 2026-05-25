@@ -13,6 +13,7 @@ fvgRetestBars = input.int(24, "Bars allowed after 15m FVG", minval=1)
 rr = input.float(2.0, "Minimum reward:risk", minval=0.25, step=0.25)
 showZones = input.bool(true, "Show HTF zones")
 showFVG = input.bool(true, "Show active 15m FVG")
+maxVisibleDistancePct = input.float(8.0, "Hide drawings farther than % from price", minval=0.5, step=0.5)
 
 type Zone
     float top
@@ -216,12 +217,16 @@ var box bBearFvg = na
 drawZone(box existing, Zone z, color c) =>
     if not na(existing)
         box.delete(existing)
-    showZones and z.valid ? box.new(bar_index - 200, z.top, bar_index + 50, z.bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 35)) : na
+    mid = (z.top + z.bottom) / 2.0
+    nearPrice = z.valid and math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
+    showZones and nearPrice ? box.new(bar_index - 200, z.top, bar_index + 50, z.bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 35)) : na
 
 drawFvg(box existing, bool valid, float top, float bottom, color c) =>
     if not na(existing)
         box.delete(existing)
-    showFVG and valid ? box.new(bar_index - 40, top, bar_index + 20, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
+    mid = (top + bottom) / 2.0
+    nearPrice = valid and math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
+    showFVG and nearPrice ? box.new(bar_index - 40, top, bar_index + 20, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
 
 if barstate.islast
     bSupply30 := drawZone(bSupply30, supply30, color.red)
