@@ -12,7 +12,8 @@ const tp2Pips = Number(process.env.TELEGRAM_TP2_PIPS || 100);
 const entryRangePips = Number(process.env.TELEGRAM_ENTRY_RANGE_PIPS || 5);
 const roundPrices = String(process.env.TELEGRAM_ROUND_PRICES || "false").toLowerCase() === "true";
 const symbolAlias = process.env.TELEGRAM_SYMBOL_ALIAS || "";
-const symbolAliases = parseSymbolAliases(process.env.TELEGRAM_SYMBOL_ALIASES || "");
+const defaultSymbolAliases = "BLACKBULL:USTEC.F=UT100M6,VANTAGE:GER40FT=GER40";
+const symbolAliases = parseSymbolAliases(`${defaultSymbolAliases},${process.env.TELEGRAM_SYMBOL_ALIASES || ""},${symbolAlias.includes("=") ? symbolAlias : ""}`);
 const allowedSymbols = (process.env.TELEGRAM_ALLOWED_SYMBOLS || "")
   .split(",")
   .map((symbol) => symbol.trim().toUpperCase())
@@ -61,7 +62,7 @@ function parseSignal(raw) {
 
 function formatSignal(signal) {
   const side = String(signal.signal || "SIGNAL").toUpperCase();
-  const symbol = signal.displaySymbol || symbolAliases.get(String(signal.symbol || "").toUpperCase()) || symbolAlias || signal.symbol || "unknown";
+  const symbol = displayNameFor(signal);
   const entry = Number(signal.price);
 
   if (!Number.isFinite(entry) || !["BUY", "SELL"].includes(side)) {
@@ -84,6 +85,20 @@ function formatSignal(signal) {
     `STOP: ${formatPrice(sl)}`,
   ];
   return lines.join("\n");
+}
+
+function displayNameFor(signal) {
+  if (signal.displaySymbol) return signal.displaySymbol;
+
+  const rawSymbol = String(signal.symbol || "").toUpperCase();
+  const mapped = symbolAliases.get(rawSymbol);
+  if (mapped) return mapped;
+
+  if (symbolAlias && !symbolAlias.includes("=") && !symbolAlias.includes(",")) {
+    return symbolAlias;
+  }
+
+  return signal.symbol || "unknown";
 }
 
 function formatPrice(value) {
