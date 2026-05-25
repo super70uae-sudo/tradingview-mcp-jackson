@@ -12,7 +12,6 @@ fvgRetestBars = input.int(24, "Bars allowed after 15m FVG", minval=1)
 rsiLength = input.int(14, "RSI length", minval=1)
 rsiOversold = input.float(30.0, "RSI oversold for buys", minval=1, maxval=50)
 rsiOverbought = input.float(70.0, "RSI overbought for sells", minval=50, maxval=99)
-rsiRecentBars = input.int(8, "RSI extreme valid for bars", minval=1)
 showZones = input.bool(true, "Show HTF zones")
 showFVG = input.bool(true, "Show active 15m FVG")
 maxVisibleDistancePct = input.float(8.0, "Hide drawings farther than % from price", minval=0.5, step=0.5)
@@ -115,10 +114,8 @@ fvg15() =>
 [bullFvgTopRaw, bullFvgBotRaw, bearFvgTopRaw, bearFvgBotRaw] = request.security(syminfo.tickerid, "15", fvg15(), barmerge.gaps_off, barmerge.lookahead_off)
 
 rsi = ta.rsi(close, rsiLength)
-barsSinceOversold = ta.barssince(rsi <= rsiOversold)
-barsSinceOverbought = ta.barssince(rsi >= rsiOverbought)
-buyRsiOk = not na(barsSinceOversold) and barsSinceOversold <= rsiRecentBars
-sellRsiOk = not na(barsSinceOverbought) and barsSinceOverbought <= rsiRecentBars
+buyRsiOk = rsi <= rsiOversold
+sellRsiOk = rsi >= rsiOverbought
 
 if setupDir == 1 and setupStillValid and buyRsiOk and not na(bullFvgTopRaw)
     bullFvgTop := bullFvgTopRaw
@@ -139,13 +136,15 @@ longSignal = setupDir == 1 and setupStillValid and buyRsiOk and bullFvgRetest
 shortSignal = setupDir == -1 and setupStillValid and sellRsiOk and bearFvgRetest
 
 if longSignal
-    msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, RSI oversold recently, 15m bullish FVG retest"}'
+    msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, RSI below 30, 15m bullish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
+    box.new(bar_index - 3, bullFvgTop, bar_index + 8, bullFvgBottom, bgcolor=color.new(color.aqua, 82), border_color=color.new(color.aqua, 20))
     setupDir := 0
 
 if shortSignal
-    msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, RSI overbought recently, 15m bearish FVG retest"}'
+    msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, RSI above 70, 15m bearish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
+    box.new(bar_index - 3, bearFvgTop, bar_index + 8, bearFvgBottom, bgcolor=color.new(color.orange, 82), border_color=color.new(color.orange, 20))
     setupDir := 0
 
 plotshape(longSignal, title="Buy", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="BUY")
