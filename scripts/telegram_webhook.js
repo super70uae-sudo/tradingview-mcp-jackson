@@ -12,6 +12,7 @@ const tp2Pips = Number(process.env.TELEGRAM_TP2_PIPS || 100);
 const entryRangePips = Number(process.env.TELEGRAM_ENTRY_RANGE_PIPS || 5);
 const roundPrices = String(process.env.TELEGRAM_ROUND_PRICES || "false").toLowerCase() === "true";
 const symbolAlias = process.env.TELEGRAM_SYMBOL_ALIAS || "";
+const symbolAliases = parseSymbolAliases(process.env.TELEGRAM_SYMBOL_ALIASES || "");
 const allowedSymbols = (process.env.TELEGRAM_ALLOWED_SYMBOLS || "")
   .split(",")
   .map((symbol) => symbol.trim().toUpperCase())
@@ -60,7 +61,7 @@ function parseSignal(raw) {
 
 function formatSignal(signal) {
   const side = String(signal.signal || "SIGNAL").toUpperCase();
-  const symbol = signal.displaySymbol || symbolAlias || signal.symbol || "unknown";
+  const symbol = signal.displaySymbol || symbolAliases.get(String(signal.symbol || "").toUpperCase()) || symbolAlias || signal.symbol || "unknown";
   const entry = Number(signal.price);
 
   if (!Number.isFinite(entry) || !["BUY", "SELL"].includes(side)) {
@@ -97,6 +98,15 @@ function isAllowedSymbol(signal) {
     signal.displaySymbol,
   ].filter(Boolean).map((symbol) => String(symbol).toUpperCase());
   return candidates.some((symbol) => allowedSymbols.includes(symbol));
+}
+
+function parseSymbolAliases(raw) {
+  const aliases = new Map();
+  for (const pair of raw.split(",")) {
+    const [from, to] = pair.split("=");
+    if (from && to) aliases.set(from.trim().toUpperCase(), to.trim());
+  }
+  return aliases;
 }
 
 async function sendTelegram(text) {
