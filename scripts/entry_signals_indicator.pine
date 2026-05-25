@@ -114,8 +114,8 @@ fvg15() =>
 [bullFvgTopRaw, bullFvgBotRaw, bearFvgTopRaw, bearFvgBotRaw] = request.security(syminfo.tickerid, "15", fvg15(), barmerge.gaps_off, barmerge.lookahead_off)
 
 rsi = ta.rsi(close, rsiLength)
-buyRsiOk = rsi <= rsiOversold
-sellRsiOk = rsi >= rsiOverbought
+buyRsiOk = rsi < rsiOversold
+sellRsiOk = rsi > rsiOverbought
 
 if setupDir == 1 and setupStillValid and buyRsiOk and not na(bullFvgTopRaw)
     bullFvgTop := bullFvgTopRaw
@@ -147,8 +147,8 @@ if shortSignal
     box.new(bar_index - 3, bearFvgTop, bar_index + 8, bearFvgBottom, bgcolor=color.new(color.orange, 82), border_color=color.new(color.orange, 20))
     setupDir := 0
 
-plotshape(longSignal, title="Buy", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="BUY")
-plotshape(shortSignal, title="Sell", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small, text="SELL")
+plotshape(longSignal, title="Buy", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small)
+plotshape(shortSignal, title="Sell", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
 
 var box bSupply30 = na
 var box bSupply60 = na
