@@ -1,194 +1,74 @@
 //@version=6
-indicator("HTF Zone FVG Entry Signals", overlay=true, scale=scale.none, max_boxes_count=20, max_labels_count=20)
+indicator("Supply and Demand Entry Zones", overlay=true, scale=scale.none, max_boxes_count=10)
 
-leftBars = input.int(3, "Zone pivot left bars", minval=1)
-rightBars = input.int(3, "Zone pivot right bars", minval=1)
+baseBars = input.int(3, "Base candles", minval=1, maxval=10)
 atrLength = input.int(14, "ATR length", minval=1)
-zoneAtrWidth = input.float(0.35, "Zone thickness in ATR", minval=0.05, step=0.05)
-impulseAtr = input.float(1.20, "Strong move away in ATR", minval=0.10, step=0.10)
-wickRatio = input.float(0.35, "Minimum rejection wick ratio", minval=0.05, maxval=0.95, step=0.05)
-setupValidBars = input.int(32, "Bars allowed after zone rejection", minval=1)
-fvgRetestBars = input.int(24, "Bars allowed after FVG", minval=1)
-rsiLength = input.int(14, "RSI length", minval=1)
-rsiOversold = input.float(30.0, "RSI oversold for buys", minval=1, maxval=50)
-rsiOverbought = input.float(70.0, "RSI overbought for sells", minval=50, maxval=99)
-showZones = input.bool(true, "Show current zone")
-showFVG = input.bool(true, "Show active FVG")
+impulseAtr = input.float(1.5, "Impulse size in ATR", minval=0.25, step=0.25)
+maxBaseAtr = input.float(1.2, "Maximum base height in ATR", minval=0.25, step=0.25)
+showDemand = input.bool(true, "Show demand zone")
+showSupply = input.bool(true, "Show supply zone")
 
-type Zone
-    float top
-    float bottom
-    bool valid
+plot(na, title="Study Anchor", display=display.none)
 
-zoneFromTf() =>
-    atr = ta.atr(atrLength)
-    ph = ta.pivothigh(high, leftBars, rightBars)
-    pl = ta.pivotlow(low, leftBars, rightBars)
-    supplyImpulse = not na(ph) and (ph - close) > atr * impulseAtr
-    demandImpulse = not na(pl) and (close - pl) > atr * impulseAtr
-    supplyTop = ph + atr * zoneAtrWidth
-    supplyBottom = ph - atr * zoneAtrWidth
-    demandTop = pl + atr * zoneAtrWidth
-    demandBottom = pl - atr * zoneAtrWidth
-    [supplyImpulse ? supplyTop : na, supplyImpulse ? supplyBottom : na, demandImpulse ? demandTop : na, demandImpulse ? demandBottom : na]
+atr = ta.atr(atrLength)
+baseHigh = ta.highest(high[1], baseBars)
+baseLow = ta.lowest(low[1], baseBars)
+baseHeight = baseHigh - baseLow
 
-[s15Top, s15Bot, d15Top, d15Bot] = request.security(syminfo.tickerid, "15", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-[s30Top, s30Bot, d30Top, d30Bot] = request.security(syminfo.tickerid, "30", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-[s60Top, s60Bot, d60Top, d60Bot] = request.security(syminfo.tickerid, "60", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-[s240Top, s240Bot, d240Top, d240Bot] = request.security(syminfo.tickerid, "240", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+body = math.abs(close - open)
+bullImpulse = close > baseHigh and close > open and body >= atr * impulseAtr and baseHeight <= atr * maxBaseAtr
+bearImpulse = close < baseLow and close < open and body >= atr * impulseAtr and baseHeight <= atr * maxBaseAtr
 
-var Zone supply = Zone.new(na, na, false)
-var Zone demand = Zone.new(na, na, false)
-var box supplyBox = na
+var float demandTop = na
+var float demandBottom = na
+var int demandStartTime = na
+var bool demandActive = false
 var box demandBox = na
-var box fvgBox = na
 
-newZone(Zone oldZone, float top, float bottom) =>
-    not na(top) and (not oldZone.valid or oldZone.top != top or oldZone.bottom != bottom)
+var float supplyTop = na
+var float supplyBottom = na
+var int supplyStartTime = na
+var bool supplyActive = false
+var box supplyBox = na
 
-drawCurrentBox(box existing, bool visible, float top, float bottom, color c) =>
-    result = existing
-    if not visible
-        if not na(result)
-            box.delete(result)
-        result := na
-    else
-        if na(result)
-            result := box.new(bar_index - 10, top, bar_index + 10, bottom, bgcolor=color.new(c, 86), border_color=color.new(c, 25))
-        else
-            box.set_left(result, bar_index - 10)
-            box.set_right(result, bar_index + 10)
-            box.set_top(result, top)
-            box.set_bottom(result, bottom)
-            box.set_bgcolor(result, color.new(c, 86))
-            box.set_border_color(result, color.new(c, 25))
-    result
+deleteBox(box b) =>
+    if not na(b)
+        box.delete(b)
 
-// Keep one latest supply and one latest demand zone only.
-if newZone(supply, s240Top, s240Bot)
-    supply := Zone.new(s240Top, s240Bot, true)
-else if newZone(supply, s60Top, s60Bot)
-    supply := Zone.new(s60Top, s60Bot, true)
-else if newZone(supply, s30Top, s30Bot)
-    supply := Zone.new(s30Top, s30Bot, true)
-else if newZone(supply, s15Top, s15Bot)
-    supply := Zone.new(s15Top, s15Bot, true)
+if bullImpulse
+    deleteBox(demandBox)
+    demandTop := baseHigh
+    demandBottom := baseLow
+    demandStartTime := time[baseBars]
+    demandActive := true
+    demandBox := showDemand ? box.new(demandStartTime, demandTop, time, demandBottom, xloc=xloc.bar_time, extend=extend.right, bgcolor=color.new(color.lime, 84), border_color=color.new(color.lime, 20)) : na
 
-if newZone(demand, d240Top, d240Bot)
-    demand := Zone.new(d240Top, d240Bot, true)
-else if newZone(demand, d60Top, d60Bot)
-    demand := Zone.new(d60Top, d60Bot, true)
-else if newZone(demand, d30Top, d30Bot)
-    demand := Zone.new(d30Top, d30Bot, true)
-else if newZone(demand, d15Top, d15Bot)
-    demand := Zone.new(d15Top, d15Bot, true)
+if bearImpulse
+    deleteBox(supplyBox)
+    supplyTop := baseHigh
+    supplyBottom := baseLow
+    supplyStartTime := time[baseBars]
+    supplyActive := true
+    supplyBox := showSupply ? box.new(supplyStartTime, supplyTop, time, supplyBottom, xloc=xloc.bar_time, extend=extend.right, bgcolor=color.new(color.red, 84), border_color=color.new(color.red, 20)) : na
 
-inZone(Zone z) =>
-    z.valid and high >= z.bottom and low <= z.top
+if demandActive and close < demandBottom
+    demandActive := false
+    deleteBox(demandBox)
+    demandBox := na
 
-barRange = math.max(high - low, syminfo.mintick)
-upperWick = high - math.max(open, close)
-lowerWick = math.min(open, close) - low
-supplyReject = inZone(supply) and close < supply.bottom and upperWick / barRange >= wickRatio
-demandReject = inZone(demand) and close > demand.top and lowerWick / barRange >= wickRatio
+if supplyActive and close > supplyTop
+    supplyActive := false
+    deleteBox(supplyBox)
+    supplyBox := na
 
-var int setupDir = 0
-var int setupBar = na
-var float activeFvgTop = na
-var float activeFvgBottom = na
-var int activeFvgBar = na
+if demandActive and not na(demandBox)
+    box.set_top(demandBox, demandTop)
+    box.set_bottom(demandBox, demandBottom)
+    box.set_left(demandBox, demandStartTime)
+    box.set_right(demandBox, time)
 
-if supplyReject
-    setupDir := -1
-    setupBar := bar_index
-    activeFvgTop := na
-    activeFvgBottom := na
-    activeFvgBar := na
-
-if demandReject
-    setupDir := 1
-    setupBar := bar_index
-    activeFvgTop := na
-    activeFvgBottom := na
-    activeFvgBar := na
-
-setupValid = not na(setupBar) and bar_index - setupBar <= setupValidBars
-if not setupValid
-    setupDir := 0
-
-fvgFromTf() =>
-    bull = low > high[2]
-    bear = high < low[2]
-    [bull ? low : na, bull ? high[2] : na, bear ? low[2] : na, bear ? high : na]
-
-structureFromTf() =>
-    ph = ta.pivothigh(high, leftBars, rightBars)
-    pl = ta.pivotlow(low, leftBars, rightBars)
-    var float lastHigh = na
-    var float lastLow = na
-    if not na(ph)
-        lastHigh := ph
-    if not na(pl)
-        lastLow := pl
-    trend = ta.ema(close, 50)
-    bullish = not na(lastHigh) and close > lastHigh and close > trend
-    bearish = not na(lastLow) and close < lastLow and close < trend
-    [bullish, bearish]
-
-[bull5Top, bull5Bot, bear5Top, bear5Bot] = request.security(syminfo.tickerid, "5", fvgFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-[bull15Top, bull15Bot, bear15Top, bear15Bot] = request.security(syminfo.tickerid, "15", fvgFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-[bullStruct15, bearStruct15] = request.security(syminfo.tickerid, "15", structureFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-[bullStruct30, bearStruct30] = request.security(syminfo.tickerid, "30", structureFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
-
-rsi = ta.rsi(close, rsiLength)
-buyOk = rsi < rsiOversold and (bullStruct15 or bullStruct30)
-sellOk = rsi > rsiOverbought and (bearStruct15 or bearStruct30)
-
-bullTop = not na(bull5Top) ? bull5Top : bull15Top
-bullBot = not na(bull5Bot) ? bull5Bot : bull15Bot
-bearTop = not na(bear5Top) ? bear5Top : bear15Top
-bearBot = not na(bear5Bot) ? bear5Bot : bear15Bot
-
-if setupDir == 1 and setupValid and buyOk and not na(bullTop)
-    activeFvgTop := bullTop
-    activeFvgBottom := bullBot
-    activeFvgBar := bar_index
-
-if setupDir == -1 and setupValid and sellOk and not na(bearTop)
-    activeFvgTop := bearTop
-    activeFvgBottom := bearBot
-    activeFvgBar := bar_index
-
-fvgValid = not na(activeFvgBar) and bar_index - activeFvgBar <= fvgRetestBars
-if not fvgValid
-    activeFvgTop := na
-    activeFvgBottom := na
-    activeFvgBar := na
-
-bullRetest = setupDir == 1 and fvgValid and low <= activeFvgTop and close > activeFvgBottom
-bearRetest = setupDir == -1 and fvgValid and high >= activeFvgBottom and close < activeFvgTop
-
-longSignal = setupValid and buyOk and bullRetest
-shortSignal = setupValid and sellOk and bearRetest
-
-if longSignal
-    alert('{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, RSI below 30, structure, 5m/15m FVG retest"}', alert.freq_once_per_bar_close)
-    setupDir := 0
-    activeFvgTop := na
-    activeFvgBottom := na
-    activeFvgBar := na
-
-if shortSignal
-    alert('{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, RSI above 70, structure, 5m/15m FVG retest"}', alert.freq_once_per_bar_close)
-    setupDir := 0
-    activeFvgTop := na
-    activeFvgBottom := na
-    activeFvgBar := na
-
-plotshape(longSignal, title="Up Arrow", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small)
-plotshape(shortSignal, title="Down Arrow", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
-
-supplyBox := drawCurrentBox(supplyBox, showZones and supply.valid, supply.top, supply.bottom, color.red)
-demandBox := drawCurrentBox(demandBox, showZones and demand.valid, demand.top, demand.bottom, color.lime)
-fvgColor = setupDir == 1 ? color.aqua : color.orange
-fvgBox := drawCurrentBox(fvgBox, showFVG and fvgValid, activeFvgTop, activeFvgBottom, fvgColor)
+if supplyActive and not na(supplyBox)
+    box.set_top(supplyBox, supplyTop)
+    box.set_bottom(supplyBox, supplyBottom)
+    box.set_left(supplyBox, supplyStartTime)
+    box.set_right(supplyBox, time)
