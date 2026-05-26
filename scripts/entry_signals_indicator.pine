@@ -1,5 +1,73 @@
 //@version=6
-indicator("Clean Strategy Builder", overlay=true)
+indicator("Clean Supply Demand Zones", overlay=true, max_boxes_count=4)
 
-// Cancelled.
-// No strategy code is active.
+baseBars = input.int(3, "Base candles", minval=1, maxval=8)
+atrLength = input.int(14, "ATR length", minval=1)
+impulseAtr = input.float(1.4, "Impulse strength", minval=0.5, step=0.1)
+maxBaseAtr = input.float(1.1, "Max base size", minval=0.3, step=0.1)
+showSupply = input.bool(true, "Show supply")
+showDemand = input.bool(true, "Show demand")
+
+plot(na, title="Study Anchor", display=display.none)
+
+atr = ta.atr(atrLength)
+baseHigh = ta.highest(high[1], baseBars)
+baseLow = ta.lowest(low[1], baseBars)
+baseSize = baseHigh - baseLow
+body = math.abs(close - open)
+
+validBase = baseSize <= atr * maxBaseAtr
+bullMoveAway = validBase and close > baseHigh and close > open and body >= atr * impulseAtr
+bearMoveAway = validBase and close < baseLow and close < open and body >= atr * impulseAtr
+
+var float demandTop = na
+var float demandBottom = na
+var int demandLeftTime = na
+var box demandBox = na
+var bool demandActive = false
+
+var float supplyTop = na
+var float supplyBottom = na
+var int supplyLeftTime = na
+var box supplyBox = na
+var bool supplyActive = false
+
+deleteBox(box b) =>
+    if not na(b)
+        box.delete(b)
+
+if bullMoveAway
+    deleteBox(demandBox)
+    demandTop := baseHigh
+    demandBottom := baseLow
+    demandLeftTime := time[baseBars]
+    demandActive := true
+    demandBox := showDemand ? box.new(demandLeftTime, demandTop, time, demandBottom, xloc=xloc.bar_time, extend=extend.right, bgcolor=color.new(color.lime, 84), border_color=color.new(color.lime, 15)) : na
+
+if bearMoveAway
+    deleteBox(supplyBox)
+    supplyTop := baseHigh
+    supplyBottom := baseLow
+    supplyLeftTime := time[baseBars]
+    supplyActive := true
+    supplyBox := showSupply ? box.new(supplyLeftTime, supplyTop, time, supplyBottom, xloc=xloc.bar_time, extend=extend.right, bgcolor=color.new(color.red, 84), border_color=color.new(color.red, 15)) : na
+
+if demandActive and close < demandBottom
+    demandActive := false
+    deleteBox(demandBox)
+    demandBox := na
+
+if supplyActive and close > supplyTop
+    supplyActive := false
+    deleteBox(supplyBox)
+    supplyBox := na
+
+if demandActive and not na(demandBox)
+    box.set_left(demandBox, demandLeftTime)
+    box.set_top(demandBox, demandTop)
+    box.set_bottom(demandBox, demandBottom)
+
+if supplyActive and not na(supplyBox)
+    box.set_left(supplyBox, supplyLeftTime)
+    box.set_top(supplyBox, supplyTop)
+    box.set_bottom(supplyBox, supplyBottom)
