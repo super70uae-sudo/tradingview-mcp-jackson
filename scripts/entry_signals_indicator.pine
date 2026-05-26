@@ -183,49 +183,36 @@ if shortSignal
 plotshape(longSignal, title="Up Arrow", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small)
 plotshape(shortSignal, title="Down Arrow", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
 
-zoneVisible(Zone z) =>
-    showZones and z.valid and nearCurrentPrice(z.top, z.bottom)
+var box currentSupplyBox = na
+var box currentDemandBox = na
+var box currentBullFvgBox = na
+var box currentBearFvgBox = na
 
-fvgVisible(bool valid, float top, float bottom) =>
-    showFVG and valid and nearCurrentPrice(top, bottom)
+syncBox(box existing, bool visible, float top, float bottom, color c) =>
+    result = existing
+    if not visible
+        if not na(result)
+            box.delete(result)
+        result := na
+    else
+        if na(result)
+            result := box.new(bar_index - 20, top, bar_index + 5, bottom, bgcolor=color.new(c, 86), border_color=color.new(c, 35))
+        else
+            box.set_left(result, bar_index - 20)
+            box.set_right(result, bar_index + 5)
+            box.set_top(result, top)
+            box.set_bottom(result, bottom)
+            box.set_bgcolor(result, color.new(c, 86))
+            box.set_border_color(result, color.new(c, 35))
+    result
 
-s15TopPlot = plot(zoneVisible(supply15) ? supply15.top : na, title="Supply 15 Top", color=color.new(color.red, 100), display=display.none)
-s15BotPlot = plot(zoneVisible(supply15) ? supply15.bottom : na, title="Supply 15 Bottom", color=color.new(color.red, 100), display=display.none)
-fill(s15TopPlot, s15BotPlot, color=color.new(color.red, 88), title="Supply 15")
+supplyVisible = showZones and activeSupply.valid and nearCurrentPrice(activeSupply.top, activeSupply.bottom)
+demandVisible = showZones and activeDemand.valid and nearCurrentPrice(activeDemand.top, activeDemand.bottom)
+bullFvgVisible = showFVG and bullFvgValid and nearCurrentPrice(bullFvgTop, bullFvgBottom)
+bearFvgVisible = showFVG and bearFvgValid and nearCurrentPrice(bearFvgTop, bearFvgBottom)
 
-s30TopPlot = plot(zoneVisible(supply30) ? supply30.top : na, title="Supply 30 Top", color=color.new(color.red, 100), display=display.none)
-s30BotPlot = plot(zoneVisible(supply30) ? supply30.bottom : na, title="Supply 30 Bottom", color=color.new(color.red, 100), display=display.none)
-fill(s30TopPlot, s30BotPlot, color=color.new(color.red, 90), title="Supply 30")
-
-s60TopPlot = plot(zoneVisible(supply60) ? supply60.top : na, title="Supply 60 Top", color=color.new(color.red, 100), display=display.none)
-s60BotPlot = plot(zoneVisible(supply60) ? supply60.bottom : na, title="Supply 60 Bottom", color=color.new(color.red, 100), display=display.none)
-fill(s60TopPlot, s60BotPlot, color=color.new(color.red, 92), title="Supply 60")
-
-s240TopPlot = plot(zoneVisible(supply240) ? supply240.top : na, title="Supply 240 Top", color=color.new(color.red, 100), display=display.none)
-s240BotPlot = plot(zoneVisible(supply240) ? supply240.bottom : na, title="Supply 240 Bottom", color=color.new(color.red, 100), display=display.none)
-fill(s240TopPlot, s240BotPlot, color=color.new(color.red, 94), title="Supply 240")
-
-d15TopPlot = plot(zoneVisible(demand15) ? demand15.top : na, title="Demand 15 Top", color=color.new(color.lime, 100), display=display.none)
-d15BotPlot = plot(zoneVisible(demand15) ? demand15.bottom : na, title="Demand 15 Bottom", color=color.new(color.lime, 100), display=display.none)
-fill(d15TopPlot, d15BotPlot, color=color.new(color.lime, 88), title="Demand 15")
-
-d30TopPlot = plot(zoneVisible(demand30) ? demand30.top : na, title="Demand 30 Top", color=color.new(color.lime, 100), display=display.none)
-d30BotPlot = plot(zoneVisible(demand30) ? demand30.bottom : na, title="Demand 30 Bottom", color=color.new(color.lime, 100), display=display.none)
-fill(d30TopPlot, d30BotPlot, color=color.new(color.lime, 90), title="Demand 30")
-
-d60TopPlot = plot(zoneVisible(demand60) ? demand60.top : na, title="Demand 60 Top", color=color.new(color.lime, 100), display=display.none)
-d60BotPlot = plot(zoneVisible(demand60) ? demand60.bottom : na, title="Demand 60 Bottom", color=color.new(color.lime, 100), display=display.none)
-fill(d60TopPlot, d60BotPlot, color=color.new(color.lime, 92), title="Demand 60")
-
-d240TopPlot = plot(zoneVisible(demand240) ? demand240.top : na, title="Demand 240 Top", color=color.new(color.lime, 100), display=display.none)
-d240BotPlot = plot(zoneVisible(demand240) ? demand240.bottom : na, title="Demand 240 Bottom", color=color.new(color.lime, 100), display=display.none)
-fill(d240TopPlot, d240BotPlot, color=color.new(color.lime, 94), title="Demand 240")
-
-bullFvgTopPlot = plot(fvgVisible(bullFvgValid, bullFvgTop, bullFvgBottom) ? bullFvgTop : na, title="Bull FVG Top", color=color.new(color.aqua, 100), display=display.none)
-bullFvgBotPlot = plot(fvgVisible(bullFvgValid, bullFvgTop, bullFvgBottom) ? bullFvgBottom : na, title="Bull FVG Bottom", color=color.new(color.aqua, 100), display=display.none)
-fill(bullFvgTopPlot, bullFvgBotPlot, color=color.new(color.aqua, 86), title="Bull FVG")
-
-bearFvgTopPlot = plot(fvgVisible(bearFvgValid, bearFvgTop, bearFvgBottom) ? bearFvgTop : na, title="Bear FVG Top", color=color.new(color.orange, 100), display=display.none)
-bearFvgBotPlot = plot(fvgVisible(bearFvgValid, bearFvgTop, bearFvgBottom) ? bearFvgBottom : na, title="Bear FVG Bottom", color=color.new(color.orange, 100), display=display.none)
-fill(bearFvgTopPlot, bearFvgBotPlot, color=color.new(color.orange, 86), title="Bear FVG")
+currentSupplyBox := syncBox(currentSupplyBox, supplyVisible, activeSupply.top, activeSupply.bottom, color.red)
+currentDemandBox := syncBox(currentDemandBox, demandVisible, activeDemand.top, activeDemand.bottom, color.lime)
+currentBullFvgBox := syncBox(currentBullFvgBox, bullFvgVisible, bullFvgTop, bullFvgBottom, color.aqua)
+currentBearFvgBox := syncBox(currentBearFvgBox, bearFvgVisible, bearFvgTop, bearFvgBottom, color.orange)
 
