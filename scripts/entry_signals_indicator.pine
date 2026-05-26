@@ -43,21 +43,56 @@ var Zone demand60 = Zone.new(na, na, false)
 var Zone supply240 = Zone.new(na, na, false)
 var Zone demand240 = Zone.new(na, na, false)
 
+var box bSupply15 = na
+var box bSupply30 = na
+var box bSupply60 = na
+var box bSupply240 = na
+var box bDemand15 = na
+var box bDemand30 = na
+var box bDemand60 = na
+var box bDemand240 = na
+
+zoneChanged(Zone z, float top, float bottom) =>
+    not z.valid or z.top != top or z.bottom != bottom
+
+createFixedZone(box existing, float top, float bottom, color c) =>
+    if not na(existing)
+        box.delete(existing)
+    mid = (top + bottom) / 2.0
+    nearPrice = showZones and math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
+    nearPrice ? box.new(bar_index, top, bar_index + 1, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 35), extend=extend.right) : na
+
 if not na(s15Top)
+    if zoneChanged(supply15, s15Top, s15Bot)
+        bSupply15 := createFixedZone(bSupply15, s15Top, s15Bot, color.red)
     supply15 := Zone.new(s15Top, s15Bot, true)
 if not na(d15Top)
+    if zoneChanged(demand15, d15Top, d15Bot)
+        bDemand15 := createFixedZone(bDemand15, d15Top, d15Bot, color.lime)
     demand15 := Zone.new(d15Top, d15Bot, true)
 if not na(s30Top)
+    if zoneChanged(supply30, s30Top, s30Bot)
+        bSupply30 := createFixedZone(bSupply30, s30Top, s30Bot, color.red)
     supply30 := Zone.new(s30Top, s30Bot, true)
 if not na(d30Top)
+    if zoneChanged(demand30, d30Top, d30Bot)
+        bDemand30 := createFixedZone(bDemand30, d30Top, d30Bot, color.lime)
     demand30 := Zone.new(d30Top, d30Bot, true)
 if not na(s60Top)
+    if zoneChanged(supply60, s60Top, s60Bot)
+        bSupply60 := createFixedZone(bSupply60, s60Top, s60Bot, color.red)
     supply60 := Zone.new(s60Top, s60Bot, true)
 if not na(d60Top)
+    if zoneChanged(demand60, d60Top, d60Bot)
+        bDemand60 := createFixedZone(bDemand60, d60Top, d60Bot, color.lime)
     demand60 := Zone.new(d60Top, d60Bot, true)
 if not na(s240Top)
+    if zoneChanged(supply240, s240Top, s240Bot)
+        bSupply240 := createFixedZone(bSupply240, s240Top, s240Bot, color.red)
     supply240 := Zone.new(s240Top, s240Bot, true)
 if not na(d240Top)
+    if zoneChanged(demand240, d240Top, d240Bot)
+        bDemand240 := createFixedZone(bDemand240, d240Top, d240Bot, color.lime)
     demand240 := Zone.new(d240Top, d240Bot, true)
 
 inZone(Zone z) =>
@@ -92,29 +127,3 @@ if shortSignal
 
 plotshape(longSignal, title="Up Arrow", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small)
 plotshape(shortSignal, title="Down Arrow", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
-
-var box bSupply30 = na
-var box bSupply60 = na
-var box bSupply240 = na
-var box bSupply15 = na
-var box bDemand15 = na
-var box bDemand30 = na
-var box bDemand60 = na
-var box bDemand240 = na
-
-drawZone(box existing, Zone z, color c) =>
-    if not na(existing)
-        box.delete(existing)
-    mid = (z.top + z.bottom) / 2.0
-    nearPrice = z.valid and math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
-    showZones and nearPrice ? box.new(bar_index - 200, z.top, bar_index + 50, z.bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 35)) : na
-
-if barstate.islast
-    bSupply15 := drawZone(bSupply15, supply15, color.red)
-    bSupply30 := drawZone(bSupply30, supply30, color.red)
-    bSupply60 := drawZone(bSupply60, supply60, color.red)
-    bSupply240 := drawZone(bSupply240, supply240, color.red)
-    bDemand15 := drawZone(bDemand15, demand15, color.lime)
-    bDemand30 := drawZone(bDemand30, demand30, color.lime)
-    bDemand60 := drawZone(bDemand60, demand60, color.lime)
-    bDemand240 := drawZone(bDemand240, demand240, color.lime)
