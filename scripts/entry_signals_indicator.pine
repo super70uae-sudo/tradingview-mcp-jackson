@@ -6,7 +6,6 @@ rightBars = input.int(3, "Zone pivot right bars", minval=1)
 atrLength = input.int(14, "ATR length", minval=1)
 zoneAtrWidth = input.float(0.35, "Zone thickness in ATR", minval=0.05, step=0.05)
 impulseAtr = input.float(1.20, "Strong move away in ATR", minval=0.10, step=0.10)
-wickRatio = input.float(0.45, "Minimum rejection wick ratio", minval=0.05, maxval=0.95, step=0.05)
 rsiLength = input.int(14, "RSI length", minval=1)
 rsiLowExtreme = input.float(35.0, "RSI lower edge", minval=1, maxval=50)
 rsiHighExtreme = input.float(65.0, "RSI upper edge", minval=50, maxval=99)
@@ -67,19 +66,18 @@ inZone(Zone z) =>
 activeSupply = inZone(supply240) ? supply240 : inZone(supply60) ? supply60 : inZone(supply30) ? supply30 : inZone(supply15) ? supply15 : Zone.new(na, na, false)
 activeDemand = inZone(demand240) ? demand240 : inZone(demand60) ? demand60 : inZone(demand30) ? demand30 : inZone(demand15) ? demand15 : Zone.new(na, na, false)
 
-barRange = math.max(high - low, syminfo.mintick)
-upperWick = high - math.max(open, close)
-lowerWick = math.min(open, close) - low
-supplyRejection = activeSupply.valid and high >= activeSupply.bottom and close < activeSupply.bottom and upperWick / barRange >= wickRatio
-demandRejection = activeDemand.valid and low <= activeDemand.top and close > activeDemand.top and lowerWick / barRange >= wickRatio
+touchSupply = activeSupply.valid and high >= activeSupply.bottom and low <= activeSupply.top
+touchDemand = activeDemand.valid and high >= activeDemand.bottom and low <= activeDemand.top
+supplyRejection = touchSupply and close < activeSupply.bottom
+demandRejection = touchDemand and close > activeDemand.top
 
 rsi = ta.rsi(close, rsiLength)
 rsiBelowRange = rsi < rsiLowExtreme
 rsiAboveRange = rsi > rsiHighExtreme
 confirmed15mClose = timeframe.in_seconds(timeframe.period) == timeframe.in_seconds("15") and barstate.isconfirmed
 
-supplyBreakout = activeSupply.valid and high >= activeSupply.bottom and close > activeSupply.top and close[1] <= activeSupply.top
-demandBreakdown = activeDemand.valid and low <= activeDemand.top and close < activeDemand.bottom and close[1] >= activeDemand.bottom
+supplyBreakout = touchSupply and close > activeSupply.top
+demandBreakdown = touchDemand and close < activeDemand.bottom
 
 longSignal = confirmed15mClose and ((demandRejection and rsiBelowRange) or (supplyBreakout and rsiAboveRange))
 shortSignal = confirmed15mClose and ((supplyRejection and rsiAboveRange) or (demandBreakdown and rsiBelowRange))
