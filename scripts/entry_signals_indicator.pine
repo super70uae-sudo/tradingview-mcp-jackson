@@ -8,12 +8,12 @@ zoneAtrWidth = input.float(0.35, "Zone thickness in ATR", minval=0.05, step=0.05
 impulseAtr = input.float(1.20, "Strong move away in ATR", minval=0.10, step=0.10)
 wickRatio = input.float(0.45, "Minimum rejection wick ratio", minval=0.05, maxval=0.95, step=0.05)
 setupValidBars = input.int(32, "Bars allowed after HTF rejection", minval=1)
-fvgRetestBars = input.int(24, "Bars allowed after 15m FVG", minval=1)
+fvgRetestBars = input.int(24, "Bars allowed after 5m/15m FVG", minval=1)
 rsiLength = input.int(14, "RSI length", minval=1)
 rsiOversold = input.float(30.0, "RSI oversold for buys", minval=1, maxval=50)
 rsiOverbought = input.float(70.0, "RSI overbought for sells", minval=50, maxval=99)
 showZones = input.bool(true, "Show HTF zones")
-showFVG = input.bool(true, "Show active 15m FVG")
+showFVG = input.bool(true, "Show active 5m/15m FVG")
 maxVisibleDistancePct = input.float(8.0, "Hide drawings farther than % from price", minval=0.5, step=0.5)
 
 type Zone
@@ -33,10 +33,13 @@ zoneFromTf() =>
     demandBottom = pl - atr * zoneAtrWidth
     [supplyImpulse ? supplyTop : na, supplyImpulse ? supplyBottom : na, demandImpulse ? demandTop : na, demandImpulse ? demandBottom : na]
 
+[s15Top, s15Bot, d15Top, d15Bot] = request.security(syminfo.tickerid, "15", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
 [s30Top, s30Bot, d30Top, d30Bot] = request.security(syminfo.tickerid, "30", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
 [s60Top, s60Bot, d60Top, d60Bot] = request.security(syminfo.tickerid, "60", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
 [s240Top, s240Bot, d240Top, d240Bot] = request.security(syminfo.tickerid, "240", zoneFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
 
+var Zone supply15 = Zone.new(na, na, false)
+var Zone demand15 = Zone.new(na, na, false)
 var Zone supply30 = Zone.new(na, na, false)
 var Zone demand30 = Zone.new(na, na, false)
 var Zone supply60 = Zone.new(na, na, false)
@@ -44,6 +47,10 @@ var Zone demand60 = Zone.new(na, na, false)
 var Zone supply240 = Zone.new(na, na, false)
 var Zone demand240 = Zone.new(na, na, false)
 
+if not na(s15Top)
+    supply15 := Zone.new(s15Top, s15Bot, true)
+if not na(d15Top)
+    demand15 := Zone.new(d15Top, d15Bot, true)
 if not na(s30Top)
     supply30 := Zone.new(s30Top, s30Bot, true)
 if not na(d30Top)
@@ -60,8 +67,8 @@ if not na(d240Top)
 inZone(Zone z) =>
     z.valid and high >= z.bottom and low <= z.top
 
-activeSupply = inZone(supply240) ? supply240 : inZone(supply60) ? supply60 : inZone(supply30) ? supply30 : Zone.new(na, na, false)
-activeDemand = inZone(demand240) ? demand240 : inZone(demand60) ? demand60 : inZone(demand30) ? demand30 : Zone.new(na, na, false)
+activeSupply = inZone(supply240) ? supply240 : inZone(supply60) ? supply60 : inZone(supply30) ? supply30 : inZone(supply15) ? supply15 : Zone.new(na, na, false)
+activeDemand = inZone(demand240) ? demand240 : inZone(demand60) ? demand60 : inZone(demand30) ? demand30 : inZone(demand15) ? demand15 : Zone.new(na, na, false)
 
 barRange = math.max(high - low, syminfo.mintick)
 upperWick = high - math.max(open, close)
@@ -102,7 +109,7 @@ setupStillValid = not na(setupBar) and bar_index - setupBar <= setupValidBars
 if not setupStillValid
     setupDir := 0
 
-fvg15() =>
+fvgFromTf() =>
     bull = low > high[2]
     bear = high < low[2]
     bullTop = low
@@ -111,18 +118,42 @@ fvg15() =>
     bearBottom = high
     [bull ? bullTop : na, bull ? bullBottom : na, bear ? bearTop : na, bear ? bearBottom : na]
 
-[bullFvgTopRaw, bullFvgBotRaw, bearFvgTopRaw, bearFvgBotRaw] = request.security(syminfo.tickerid, "15", fvg15(), barmerge.gaps_off, barmerge.lookahead_off)
+structureFromTf() =>
+    ph = ta.pivothigh(high, leftBars, rightBars)
+    pl = ta.pivotlow(low, leftBars, rightBars)
+    var float lastSwingHigh = na
+    var float lastSwingLow = na
+    if not na(ph)
+        lastSwingHigh := ph
+    if not na(pl)
+        lastSwingLow := pl
+    trend = ta.ema(close, 50)
+    bullish = not na(lastSwingHigh) and close > lastSwingHigh and close > trend
+    bearish = not na(lastSwingLow) and close < lastSwingLow and close < trend
+    [bullish, bearish]
+
+[bullFvg5TopRaw, bullFvg5BotRaw, bearFvg5TopRaw, bearFvg5BotRaw] = request.security(syminfo.tickerid, "5", fvgFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+[bullFvg15TopRaw, bullFvg15BotRaw, bearFvg15TopRaw, bearFvg15BotRaw] = request.security(syminfo.tickerid, "15", fvgFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+[bullStruct15, bearStruct15] = request.security(syminfo.tickerid, "15", structureFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+[bullStruct30, bearStruct30] = request.security(syminfo.tickerid, "30", structureFromTf(), barmerge.gaps_off, barmerge.lookahead_off)
+
+buyStructureOk = bullStruct15 or bullStruct30
+sellStructureOk = bearStruct15 or bearStruct30
+bullFvgTopRaw = not na(bullFvg5TopRaw) ? bullFvg5TopRaw : bullFvg15TopRaw
+bullFvgBotRaw = not na(bullFvg5BotRaw) ? bullFvg5BotRaw : bullFvg15BotRaw
+bearFvgTopRaw = not na(bearFvg5TopRaw) ? bearFvg5TopRaw : bearFvg15TopRaw
+bearFvgBotRaw = not na(bearFvg5BotRaw) ? bearFvg5BotRaw : bearFvg15BotRaw
 
 rsi = ta.rsi(close, rsiLength)
 buyRsiOk = rsi < rsiOversold
 sellRsiOk = rsi > rsiOverbought
 
-if setupDir == 1 and setupStillValid and buyRsiOk and not na(bullFvgTopRaw)
+if setupDir == 1 and setupStillValid and buyRsiOk and buyStructureOk and not na(bullFvgTopRaw)
     bullFvgTop := bullFvgTopRaw
     bullFvgBottom := bullFvgBotRaw
     bullFvgBar := bar_index
 
-if setupDir == -1 and setupStillValid and sellRsiOk and not na(bearFvgTopRaw)
+if setupDir == -1 and setupStillValid and sellRsiOk and sellStructureOk and not na(bearFvgTopRaw)
     bearFvgTop := bearFvgTopRaw
     bearFvgBottom := bearFvgBotRaw
     bearFvgBar := bar_index
@@ -132,17 +163,17 @@ bearFvgValid = not na(bearFvgBar) and bar_index - bearFvgBar <= fvgRetestBars
 bullFvgRetest = bullFvgValid and low <= bullFvgTop and close > bullFvgBottom
 bearFvgRetest = bearFvgValid and high >= bearFvgBottom and close < bearFvgTop
 
-longSignal = setupDir == 1 and setupStillValid and buyRsiOk and bullFvgRetest
-shortSignal = setupDir == -1 and setupStillValid and sellRsiOk and bearFvgRetest
+longSignal = setupDir == 1 and setupStillValid and buyRsiOk and buyStructureOk and bullFvgRetest
+shortSignal = setupDir == -1 and setupStillValid and sellRsiOk and sellStructureOk and bearFvgRetest
 
 if longSignal
-    msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, RSI below 30, 15m bullish FVG retest"}'
+    msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, bullish market structure, RSI below 30, 5m/15m bullish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
     box.new(bar_index - 3, bullFvgTop, bar_index + 8, bullFvgBottom, bgcolor=color.new(color.aqua, 82), border_color=color.new(color.aqua, 20))
     setupDir := 0
 
 if shortSignal
-    msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, RSI above 70, 15m bearish FVG retest"}'
+    msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, bearish market structure, RSI above 70, 5m/15m bearish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
     box.new(bar_index - 3, bearFvgTop, bar_index + 8, bearFvgBottom, bgcolor=color.new(color.orange, 82), border_color=color.new(color.orange, 20))
     setupDir := 0
@@ -153,6 +184,8 @@ plotshape(shortSignal, title="Down Arrow", style=shape.triangledown, location=lo
 var box bSupply30 = na
 var box bSupply60 = na
 var box bSupply240 = na
+var box bSupply15 = na
+var box bDemand15 = na
 var box bDemand30 = na
 var box bDemand60 = na
 var box bDemand240 = na
@@ -174,9 +207,11 @@ drawFvg(box existing, bool valid, float top, float bottom, color c) =>
     showFVG and nearPrice ? box.new(bar_index - 40, top, bar_index + 20, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
 
 if barstate.islast
+    bSupply15 := drawZone(bSupply15, supply15, color.red)
     bSupply30 := drawZone(bSupply30, supply30, color.red)
     bSupply60 := drawZone(bSupply60, supply60, color.red)
     bSupply240 := drawZone(bSupply240, supply240, color.red)
+    bDemand15 := drawZone(bDemand15, demand15, color.lime)
     bDemand30 := drawZone(bDemand30, demand30, color.lime)
     bDemand60 := drawZone(bDemand60, demand60, color.lime)
     bDemand240 := drawZone(bDemand240, demand240, color.lime)
