@@ -47,65 +47,25 @@ var Zone demand60 = Zone.new(na, na, false)
 var Zone supply240 = Zone.new(na, na, false)
 var Zone demand240 = Zone.new(na, na, false)
 
-var box bSupply15 = na
-var box bSupply30 = na
-var box bSupply60 = na
-var box bSupply240 = na
-var box bDemand15 = na
-var box bDemand30 = na
-var box bDemand60 = na
-var box bDemand240 = na
-var box bBullFvg = na
-var box bBearFvg = na
-
-zoneChanged(Zone z, float top, float bottom) =>
-    not z.valid or z.top != top or z.bottom != bottom
-
 nearCurrentPrice(float top, float bottom) =>
     mid = (top + bottom) / 2.0
     math.abs(mid - close) / close * 100 <= maxVisibleDistancePct
 
-drawFixedZone(box existing, float top, float bottom, color c) =>
-    if not na(existing)
-        box.delete(existing)
-    showZones and nearCurrentPrice(top, bottom) ? box.new(bar_index, top, bar_index + 1, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 35), extend=extend.right) : na
-
-drawFixedFvg(box existing, float top, float bottom, color c) =>
-    if not na(existing)
-        box.delete(existing)
-    showFVG and nearCurrentPrice(top, bottom) ? box.new(bar_index - 2, top, bar_index + 8, bottom, bgcolor=color.new(c, 88), border_color=color.new(c, 45)) : na
-
 if not na(s15Top)
-    if zoneChanged(supply15, s15Top, s15Bot)
-        bSupply15 := drawFixedZone(bSupply15, s15Top, s15Bot, color.red)
     supply15 := Zone.new(s15Top, s15Bot, true)
 if not na(d15Top)
-    if zoneChanged(demand15, d15Top, d15Bot)
-        bDemand15 := drawFixedZone(bDemand15, d15Top, d15Bot, color.lime)
     demand15 := Zone.new(d15Top, d15Bot, true)
 if not na(s30Top)
-    if zoneChanged(supply30, s30Top, s30Bot)
-        bSupply30 := drawFixedZone(bSupply30, s30Top, s30Bot, color.red)
     supply30 := Zone.new(s30Top, s30Bot, true)
 if not na(d30Top)
-    if zoneChanged(demand30, d30Top, d30Bot)
-        bDemand30 := drawFixedZone(bDemand30, d30Top, d30Bot, color.lime)
     demand30 := Zone.new(d30Top, d30Bot, true)
 if not na(s60Top)
-    if zoneChanged(supply60, s60Top, s60Bot)
-        bSupply60 := drawFixedZone(bSupply60, s60Top, s60Bot, color.red)
     supply60 := Zone.new(s60Top, s60Bot, true)
 if not na(d60Top)
-    if zoneChanged(demand60, d60Top, d60Bot)
-        bDemand60 := drawFixedZone(bDemand60, d60Top, d60Bot, color.lime)
     demand60 := Zone.new(d60Top, d60Bot, true)
 if not na(s240Top)
-    if zoneChanged(supply240, s240Top, s240Bot)
-        bSupply240 := drawFixedZone(bSupply240, s240Top, s240Bot, color.red)
     supply240 := Zone.new(s240Top, s240Bot, true)
 if not na(d240Top)
-    if zoneChanged(demand240, d240Top, d240Bot)
-        bDemand240 := drawFixedZone(bDemand240, d240Top, d240Bot, color.lime)
     demand240 := Zone.new(d240Top, d240Bot, true)
 
 inZone(Zone z) =>
@@ -193,15 +153,11 @@ buyRsiOk = rsi < rsiOversold
 sellRsiOk = rsi > rsiOverbought
 
 if setupDir == 1 and setupStillValid and buyRsiOk and buyStructureOk and not na(bullFvgTopRaw)
-    if na(bullFvgTop) or bullFvgTop != bullFvgTopRaw or bullFvgBottom != bullFvgBotRaw
-        bBullFvg := drawFixedFvg(bBullFvg, bullFvgTopRaw, bullFvgBotRaw, color.aqua)
     bullFvgTop := bullFvgTopRaw
     bullFvgBottom := bullFvgBotRaw
     bullFvgBar := bar_index
 
 if setupDir == -1 and setupStillValid and sellRsiOk and sellStructureOk and not na(bearFvgTopRaw)
-    if na(bearFvgTop) or bearFvgTop != bearFvgTopRaw or bearFvgBottom != bearFvgBotRaw
-        bBearFvg := drawFixedFvg(bBearFvg, bearFvgTopRaw, bearFvgBotRaw, color.orange)
     bearFvgTop := bearFvgTopRaw
     bearFvgBottom := bearFvgBotRaw
     bearFvgBar := bar_index
@@ -217,15 +173,59 @@ shortSignal = setupDir == -1 and setupStillValid and sellRsiOk and sellStructure
 if longSignal
     msg = '{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, bullish market structure, RSI below 30, 5m/15m bullish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
-    box.new(bar_index - 3, bullFvgTop, bar_index + 8, bullFvgBottom, bgcolor=color.new(color.aqua, 82), border_color=color.new(color.aqua, 20))
     setupDir := 0
 
 if shortSignal
     msg = '{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, bearish market structure, RSI above 70, 5m/15m bearish FVG retest"}'
     alert(msg, alert.freq_once_per_bar_close)
-    box.new(bar_index - 3, bearFvgTop, bar_index + 8, bearFvgBottom, bgcolor=color.new(color.orange, 82), border_color=color.new(color.orange, 20))
     setupDir := 0
 
 plotshape(longSignal, title="Up Arrow", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small)
 plotshape(shortSignal, title="Down Arrow", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
+
+zoneVisible(Zone z) =>
+    showZones and z.valid and nearCurrentPrice(z.top, z.bottom)
+
+fvgVisible(bool valid, float top, float bottom) =>
+    showFVG and valid and nearCurrentPrice(top, bottom)
+
+s15TopPlot = plot(zoneVisible(supply15) ? supply15.top : na, title="Supply 15 Top", color=color.new(color.red, 100), display=display.none)
+s15BotPlot = plot(zoneVisible(supply15) ? supply15.bottom : na, title="Supply 15 Bottom", color=color.new(color.red, 100), display=display.none)
+fill(s15TopPlot, s15BotPlot, color=color.new(color.red, 88), title="Supply 15")
+
+s30TopPlot = plot(zoneVisible(supply30) ? supply30.top : na, title="Supply 30 Top", color=color.new(color.red, 100), display=display.none)
+s30BotPlot = plot(zoneVisible(supply30) ? supply30.bottom : na, title="Supply 30 Bottom", color=color.new(color.red, 100), display=display.none)
+fill(s30TopPlot, s30BotPlot, color=color.new(color.red, 90), title="Supply 30")
+
+s60TopPlot = plot(zoneVisible(supply60) ? supply60.top : na, title="Supply 60 Top", color=color.new(color.red, 100), display=display.none)
+s60BotPlot = plot(zoneVisible(supply60) ? supply60.bottom : na, title="Supply 60 Bottom", color=color.new(color.red, 100), display=display.none)
+fill(s60TopPlot, s60BotPlot, color=color.new(color.red, 92), title="Supply 60")
+
+s240TopPlot = plot(zoneVisible(supply240) ? supply240.top : na, title="Supply 240 Top", color=color.new(color.red, 100), display=display.none)
+s240BotPlot = plot(zoneVisible(supply240) ? supply240.bottom : na, title="Supply 240 Bottom", color=color.new(color.red, 100), display=display.none)
+fill(s240TopPlot, s240BotPlot, color=color.new(color.red, 94), title="Supply 240")
+
+d15TopPlot = plot(zoneVisible(demand15) ? demand15.top : na, title="Demand 15 Top", color=color.new(color.lime, 100), display=display.none)
+d15BotPlot = plot(zoneVisible(demand15) ? demand15.bottom : na, title="Demand 15 Bottom", color=color.new(color.lime, 100), display=display.none)
+fill(d15TopPlot, d15BotPlot, color=color.new(color.lime, 88), title="Demand 15")
+
+d30TopPlot = plot(zoneVisible(demand30) ? demand30.top : na, title="Demand 30 Top", color=color.new(color.lime, 100), display=display.none)
+d30BotPlot = plot(zoneVisible(demand30) ? demand30.bottom : na, title="Demand 30 Bottom", color=color.new(color.lime, 100), display=display.none)
+fill(d30TopPlot, d30BotPlot, color=color.new(color.lime, 90), title="Demand 30")
+
+d60TopPlot = plot(zoneVisible(demand60) ? demand60.top : na, title="Demand 60 Top", color=color.new(color.lime, 100), display=display.none)
+d60BotPlot = plot(zoneVisible(demand60) ? demand60.bottom : na, title="Demand 60 Bottom", color=color.new(color.lime, 100), display=display.none)
+fill(d60TopPlot, d60BotPlot, color=color.new(color.lime, 92), title="Demand 60")
+
+d240TopPlot = plot(zoneVisible(demand240) ? demand240.top : na, title="Demand 240 Top", color=color.new(color.lime, 100), display=display.none)
+d240BotPlot = plot(zoneVisible(demand240) ? demand240.bottom : na, title="Demand 240 Bottom", color=color.new(color.lime, 100), display=display.none)
+fill(d240TopPlot, d240BotPlot, color=color.new(color.lime, 94), title="Demand 240")
+
+bullFvgTopPlot = plot(fvgVisible(bullFvgValid, bullFvgTop, bullFvgBottom) ? bullFvgTop : na, title="Bull FVG Top", color=color.new(color.aqua, 100), display=display.none)
+bullFvgBotPlot = plot(fvgVisible(bullFvgValid, bullFvgTop, bullFvgBottom) ? bullFvgBottom : na, title="Bull FVG Bottom", color=color.new(color.aqua, 100), display=display.none)
+fill(bullFvgTopPlot, bullFvgBotPlot, color=color.new(color.aqua, 86), title="Bull FVG")
+
+bearFvgTopPlot = plot(fvgVisible(bearFvgValid, bearFvgTop, bearFvgBottom) ? bearFvgTop : na, title="Bear FVG Top", color=color.new(color.orange, 100), display=display.none)
+bearFvgBotPlot = plot(fvgVisible(bearFvgValid, bearFvgTop, bearFvgBottom) ? bearFvgBottom : na, title="Bear FVG Bottom", color=color.new(color.orange, 100), display=display.none)
+fill(bearFvgTopPlot, bearFvgBotPlot, color=color.new(color.orange, 86), title="Bear FVG")
 
