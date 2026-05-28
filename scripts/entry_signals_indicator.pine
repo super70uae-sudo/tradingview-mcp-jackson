@@ -1,73 +1,173 @@
 //@version=6
-indicator("Clean Supply Demand Zones", overlay=true, max_boxes_count=4)
+strategy("HTF Zones + MSS + 15m FVG Entry", overlay=true, max_boxes_count=20, pyramiding=0)
 
-baseBars = input.int(3, "Base candles", minval=1, maxval=8)
-atrLength = input.int(14, "ATR length", minval=1)
-impulseAtr = input.float(1.4, "Impulse strength", minval=0.5, step=0.1)
-maxBaseAtr = input.float(1.1, "Max base size", minval=0.3, step=0.1)
-showSupply = input.bool(true, "Show supply")
-showDemand = input.bool(true, "Show demand")
+// The zone is the filter. FVG is only valid after price reacts from that zone.
+htf = input.timeframe("60", "Higher Timeframe Zones")
+pivotLen = input.int(5, "Zone Strength", minval=2)
+zoneSize = input.float(0.25, "Zone Size ATR", step=0.05)
+mssLen = input.int(10, "Structure Break Length", minval=2)
+rr = input.float(2.0, "Risk Reward", step=0.25)
+setupValidBars = input.int(40, "Bars after zone reaction", minval=1)
+fvgValidBars = input.int(30, "Bars after 15m FVG", minval=1)
+showZones = input.bool(true, "Show latest zones")
+showFVG = input.bool(true, "Show active FVG")
 
-plot(na, title="Study Anchor", display=display.none)
-
-atr = ta.atr(atrLength)
-baseHigh = ta.highest(high[1], baseBars)
-baseLow = ta.lowest(low[1], baseBars)
-baseSize = baseHigh - baseLow
-body = math.abs(close - open)
-
-validBase = baseSize <= atr * maxBaseAtr
-bullMoveAway = validBase and close > baseHigh and close > open and body >= atr * impulseAtr
-bearMoveAway = validBase and close < baseLow and close < open and body >= atr * impulseAtr
-
-var float demandTop = na
-var float demandBottom = na
-var int demandLeftTime = na
-var box demandBox = na
-var bool demandActive = false
+htfHighPivot = request.security(syminfo.tickerid, htf, ta.pivothigh(high, pivotLen, pivotLen), barmerge.gaps_off, barmerge.lookahead_off)
+htfLowPivot = request.security(syminfo.tickerid, htf, ta.pivotlow(low, pivotLen, pivotLen), barmerge.gaps_off, barmerge.lookahead_off)
+htfAtr = request.security(syminfo.tickerid, htf, ta.atr(14), barmerge.gaps_off, barmerge.lookahead_off)
 
 var float supplyTop = na
 var float supplyBottom = na
-var int supplyLeftTime = na
-var box supplyBox = na
+var float demandTop = na
+var float demandBottom = na
 var bool supplyActive = false
+var bool demandActive = false
+var box supplyBox = na
+var box demandBox = na
+var box buyFvgBox = na
+var box sellFvgBox = na
 
 deleteBox(box b) =>
     if not na(b)
         box.delete(b)
 
-if bullMoveAway
-    deleteBox(demandBox)
-    demandTop := baseHigh
-    demandBottom := baseLow
-    demandLeftTime := time[baseBars]
-    demandActive := true
-    demandBox := showDemand ? box.new(demandLeftTime, demandTop, time, demandBottom, xloc=xloc.bar_time, extend=extend.right, bgcolor=color.new(color.lime, 84), border_color=color.new(color.lime, 15)) : na
-
-if bearMoveAway
+if not na(htfHighPivot)
     deleteBox(supplyBox)
-    supplyTop := baseHigh
-    supplyBottom := baseLow
-    supplyLeftTime := time[baseBars]
+    supplyTop := htfHighPivot
+    supplyBottom := htfHighPivot - htfAtr * zoneSize
     supplyActive := true
-    supplyBox := showSupply ? box.new(supplyLeftTime, supplyTop, time, supplyBottom, xloc=xloc.bar_time, extend=extend.right, bgcolor=color.new(color.red, 84), border_color=color.new(color.red, 15)) : na
+    supplyBox := showZones ? box.new(bar_index, supplyTop, bar_index + 50, supplyBottom, bgcolor=color.new(color.red, 86), border_color=color.new(color.red, 20)) : na
 
-if demandActive and close < demandBottom
-    demandActive := false
+if not na(htfLowPivot)
     deleteBox(demandBox)
-    demandBox := na
+    demandBottom := htfLowPivot
+    demandTop := htfLowPivot + htfAtr * zoneSize
+    demandActive := true
+    demandBox := showZones ? box.new(bar_index, demandTop, bar_index + 50, demandBottom, bgcolor=color.new(color.green, 86), border_color=color.new(color.green, 20)) : na
 
 if supplyActive and close > supplyTop
     supplyActive := false
     deleteBox(supplyBox)
     supplyBox := na
 
-if demandActive and not na(demandBox)
-    box.set_left(demandBox, demandLeftTime)
-    box.set_top(demandBox, demandTop)
-    box.set_bottom(demandBox, demandBottom)
+if demandActive and close < demandBottom
+    demandActive := false
+    deleteBox(demandBox)
+    demandBox := na
 
 if supplyActive and not na(supplyBox)
-    box.set_left(supplyBox, supplyLeftTime)
-    box.set_top(supplyBox, supplyTop)
-    box.set_bottom(supplyBox, supplyBottom)
+    box.set_right(supplyBox, bar_index + 50)
+
+if demandActive and not na(demandBox)
+    box.set_right(demandBox, bar_index + 50)
+
+inDemand = demandActive and low <= demandTop and high >= demandBottom
+inSupply = supplyActive and high >= supplyBottom and low <= supplyTop
+
+rejectDemand = inDemand and close > demandTop
+rejectSupply = inSupply and close < supplyBottom
+bullMSS = close > ta.highest(high, mssLen)[1]
+bearMSS = close < ta.lowest(low, mssLen)[1]
+
+var int setupDir = 0
+var int setupBar = na
+
+if rejectDemand and bullMSS
+    setupDir := 1
+    setupBar := bar_index
+    deleteBox(sellFvgBox)
+    sellFvgBox := na
+
+if rejectSupply and bearMSS
+    setupDir := -1
+    setupBar := bar_index
+    deleteBox(buyFvgBox)
+    buyFvgBox := na
+
+setupValid = not na(setupBar) and bar_index - setupBar <= setupValidBars
+if not setupValid
+    setupDir := 0
+
+fvg15() =>
+    bull = low > high[2]
+    bear = high < low[2]
+    [bull ? low : na, bull ? high[2] : na, bear ? low[2] : na, bear ? high : na]
+
+[bullFvgTopRaw, bullFvgBottomRaw, bearFvgTopRaw, bearFvgBottomRaw] = request.security(syminfo.tickerid, "15", fvg15(), barmerge.gaps_off, barmerge.lookahead_off)
+
+var float buyFvgTop = na
+var float buyFvgBottom = na
+var int buyFvgBar = na
+var float sellFvgTop = na
+var float sellFvgBottom = na
+var int sellFvgBar = na
+
+if setupDir == 1 and setupValid and not na(bullFvgTopRaw)
+    buyFvgTop := bullFvgTopRaw
+    buyFvgBottom := bullFvgBottomRaw
+    buyFvgBar := bar_index
+    deleteBox(buyFvgBox)
+    buyFvgBox := showFVG ? box.new(bar_index, buyFvgTop, bar_index + 30, buyFvgBottom, bgcolor=color.new(color.green, 76), border_color=color.new(color.green, 10)) : na
+
+if setupDir == -1 and setupValid and not na(bearFvgTopRaw)
+    sellFvgTop := bearFvgTopRaw
+    sellFvgBottom := bearFvgBottomRaw
+    sellFvgBar := bar_index
+    deleteBox(sellFvgBox)
+    sellFvgBox := showFVG ? box.new(bar_index, sellFvgTop, bar_index + 30, sellFvgBottom, bgcolor=color.new(color.red, 76), border_color=color.new(color.red, 10)) : na
+
+buyFvgValid = not na(buyFvgBar) and bar_index - buyFvgBar <= fvgValidBars
+sellFvgValid = not na(sellFvgBar) and bar_index - sellFvgBar <= fvgValidBars
+
+if not buyFvgValid
+    buyFvgTop := na
+    buyFvgBottom := na
+    buyFvgBar := na
+    deleteBox(buyFvgBox)
+    buyFvgBox := na
+
+if not sellFvgValid
+    sellFvgTop := na
+    sellFvgBottom := na
+    sellFvgBar := na
+    deleteBox(sellFvgBox)
+    sellFvgBox := na
+
+if buyFvgValid and not na(buyFvgBox)
+    box.set_right(buyFvgBox, bar_index + 30)
+
+if sellFvgValid and not na(sellFvgBox)
+    box.set_right(sellFvgBox, bar_index + 30)
+
+buyRetest = buyFvgValid and bar_index > buyFvgBar and low <= buyFvgTop and close > buyFvgBottom
+sellRetest = sellFvgValid and bar_index > sellFvgBar and high >= sellFvgBottom and close < sellFvgTop
+
+buySL = demandBottom
+buyRisk = close - buySL
+buyTP = close + buyRisk * rr
+
+sellSL = supplyTop
+sellRisk = sellSL - close
+sellTP = close - sellRisk * rr
+
+if buyRetest and strategy.position_size == 0 and buyRisk > 0
+    strategy.entry("BUY", strategy.long)
+    strategy.exit("BUY TP/SL", "BUY", stop=buySL, limit=buyTP)
+    alert('{"signal":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF demand rejection, MSS, 15m FVG retest"}', alert.freq_once_per_bar_close)
+    setupDir := 0
+    buyFvgTop := na
+    buyFvgBottom := na
+    buyFvgBar := na
+    deleteBox(buyFvgBox)
+    buyFvgBox := na
+
+if sellRetest and strategy.position_size == 0 and sellRisk > 0
+    strategy.entry("SELL", strategy.short)
+    strategy.exit("SELL TP/SL", "SELL", stop=sellSL, limit=sellTP)
+    alert('{"signal":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"reason":"HTF supply rejection, MSS, 15m FVG retest"}', alert.freq_once_per_bar_close)
+    setupDir := 0
+    sellFvgTop := na
+    sellFvgBottom := na
+    sellFvgBar := na
+    deleteBox(sellFvgBox)
+    sellFvgBox := na
